@@ -1,7 +1,7 @@
 import logging
 import json
 import enum
-from typing import List, Dict, Optional, TypeVar
+from typing import List, Dict, Optional, Union
 from urllib.request import Request, urlopen
 from urllib.parse import urlencode
 from datetime import datetime
@@ -18,6 +18,22 @@ class CDEKException(Exception):
         super(CDEKException, self).__init__(*args, **kwargs)
         self.code = code
         self.message = message
+
+
+class CDEKSerializable:
+
+    @property
+    def fields(self):
+        return self.__dict__
+
+
+class CDEKEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, CDEKSerializable):
+            return json.dumps(o.fields, cls=CDEKEncoder)
+        elif isinstance(o, datetime):
+            return o.strftime('%Y-%m-%d')
+        return super(CDEKEncoder, self).default(o)
 
 
 class DeliveryPointType(enum.Enum):
@@ -56,23 +72,33 @@ class Tariff(enum.Enum):
     """ дверь - дверь """
 
 
-class CDEKMoney:
-    value: int = None
+class CDEKMoney(CDEKSerializable):
+    value: float = None
     """ Сумма """
     vat_sum: float = None
     """ Сумма НДС """
-    vat_rate: float = None
+    vat_rate: int = None
     """ Ставка НДС (значение - 0, 10, 18, 20 и т.п. , null - нет НДС) """
 
+    def __init__(self, value: float, vat_sum: float = None, vat_rate: int = None):
+        self.value = value
+        self.vat_sum = vat_sum
+        self.vat_rate = vat_rate
+    
 
-class CDEKPhone:
+
+class CDEKPhone(CDEKSerializable):
     number: str = None
     """ Номер телефона. Должен передаваться в международном формате: код страны (для России +7) и сам номер (10 и более цифр)"""
     additional: str = None
     """ Дополнительная информация (доп. номер) """
 
+    def __init__(self, number: str, additional: str = None):
+        self.number = number
+        self.additional = additional
 
-class CDEKSender:
+
+class CDEKSender(CDEKSerializable):
     """ Отправитель """
 
     company: str = None
@@ -81,10 +107,16 @@ class CDEKSender:
     """ ФИО контактного лица """
     email: str = None
     """ Email """
-    phones: List[CDEKPhone] = None
+    phones: List[CDEKPhone] = []
+
+    def __init__(self, company: str = None, name: str = None, email: str = None, phones: List[CDEKPhone] = []):
+        self.company = company
+        self.name = name
+        self.email = email
+        self.phones = phones
 
 
-class CDEKSeller:
+class CDEKSeller(CDEKSerializable):
     """ Реквизиты реального продавца """
     name: str = None
     """ Наименование истинного продавца """
@@ -94,10 +126,144 @@ class CDEKSeller:
     """ Телефон истинного продавца """
     ownership_form: int = None
     """ Код формы собственности  (подробнее см. приложение 3 https://confluence.cdek.ru/pages/viewpage.action?pageId=29923926#)"""
+
+    def __init__(self, name: str = None, inn: str = None, phone: str = None, ownership_form: int = None):
+        self.name = name
+        self.inn = inn
+        self.phone = phone
+        self.ownership_form = ownership_form
+    
     
 
+class CDEKRecipient(CDEKSerializable):
+    """ Получатель """
 
-class RegisterOrderRequest:
+    company: str = None
+    """ Название компании """
+    name: str = None
+    """ ФИО контактного лица """
+    passport_series: str = None
+    """ Серия паспорта """
+    passport_number: str = None
+    """ Номер паспорта """
+    passport_date_of_issue: Union[datetime, str] = None
+    """ Дата выдачи паспорта """
+    passport_organization: str = None
+    """ Орган выдачи паспорта """
+    tin: str = None
+    """ ИНН """
+    passport_date_of_birth: Union[datetime, str] = None
+    """ Дата рождения """
+    email: str = None
+    """ Email """
+    phones: List[CDEKPhone] = []
+
+    def __init__(self, *args, **kwargs):
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+
+
+class CDEKLocation(CDEKSerializable):
+    """ Местоположение """
+    code: int = None
+    """ Код локации СДЭК """
+    fias_guid: str = None
+    """ Уникальный идентификатор ФИАС """
+    postal_code: str = None
+    """ Почтовый индекс """
+    longitude: float = None
+    """ Долгота """
+    latitude: float = None
+    """ Широта """
+    country_code: str = None
+    """ Код страны в формате  ISO_3166-1_alpha-2 """
+    region: str = None
+    """ Название региона """
+    region_code: int = None
+    """ Код региона СДЭК """
+    sub_region: str = None
+    """ Название района региона """
+    city: str = None
+    """ Название города """
+    kladr_code: str = None
+    """ Код КЛАДР """
+    address: str = None
+    """ Строка адреса """
+
+
+class CDEKService(CDEKSerializable):
+    """ Дополнительная услуга """
+    code: int = None
+    """ Тип дополнительной услуги (подробнее см. приложение 4) """
+    parameter: float = None
+    """
+    Параметр дополнительной услуги:
+
+     - количество упаковок для услуги "Упаковка 1" (для всех типов заказа)
+     - объявленная стоимость заказа для услуги "Страхование" (только для заказов с типом "доставка")
+    """
+
+class CDEKItem(CDEKSerializable):
+    """ Позиции товаров в упаковке """
+    name: str = None
+    """ Наименование товара (может также содержать описание товара: размер, цвет) """
+    ware_key: str = None
+    """ Идентификатор/артикул товара """
+    marking: str = None
+    """ Маркировка товара. Если для товара/вложения указана маркировка, Amount не может быть больше 1. """
+    payment: CDEKMoney = None
+    """ Оплата за товар при получении (за единицу товара в валюте страны получателя, значение >=0) — наложенный платеж, в случае предоплаты значение = 0 """
+    cost: float = None
+    """ Объявленная стоимость товара (за единицу товара в валюте взаиморасчетов, значение >=0). С данного значения рассчитывается страховка """
+    weight: int = None
+    """ Вес (за единицу товара, в граммах) """
+    weight_gross: int = None
+    """ Вес брутто """
+    amount: int = None
+    """ Количество единиц товара (в штуках) """
+    name_i18n: str = None
+    """ Наименование на иностранном языке """
+    brand: str = None
+    """ Бренд на иностранном языке """
+    country_code: str = None
+    """ Код страны производителя товара в формате  ISO_3166-1_alpha-2 """
+    material: int  = None
+    """ Код материала (подробнее см. приложение 5) """
+    wifi_gsm: bool = None
+    """ Содержит wifi/gsm """
+    url: str = None
+    """ Ссылка на сайт интернет-магазина с описанием товара """
+
+    def __init__(self, *args, **kwargs):
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+
+
+class CDEKPackage(CDEKSerializable):
+    """ Упаковка """
+    number: str = None
+    """ Номер упаковки (можно использовать порядковый номер упаковки заказа или номер заказа), уникален в пределах заказа. Идентификатор заказа в ИС Клиента """
+    weight: int = None
+    """ Общий вес (в граммах) """
+    length: int = None
+    """ Габариты упаковки. Длина (в сантиметрах) """
+    width: int = None
+    """ Габариты упаковки. Ширина (в сантиметрах) """
+    height: int = None
+    """ Габариты упаковки. Высота (в сантиметрах) """
+    comment: str = None
+    """ Комментарий к упаковке """
+    items: List[CDEKItem] = []
+
+    def __init__(self, *args, **kwargs):
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+
+
+class RegisterOrderRequest(CDEKSerializable):
     type: int = OrderRequestType.SHOP.value
     """ Тип заказа """
 
@@ -116,7 +282,7 @@ class RegisterOrderRequest:
     delivery_point: str = None
     """ Код ПВЗ СДЭК, на который будет доставлена посылка """
 
-    date_invoice: datetime = None
+    date_invoice: Union[datetime, str] = None
     """ Дата инвойса. Только для заказов "интернет-магазин" """
 
     shipper_name: str = None
@@ -131,8 +297,24 @@ class RegisterOrderRequest:
     sender: CDEKSender = None
     """ Отправитель """
 
-    seller: CDEKSender = None
+    seller: CDEKSeller = None
     """ Реквизиты реального продавца """
+
+    recipient: CDEKRecipient = None
+    """ Получатель """
+
+    from_location: CDEKLocation = None
+    """ Адрес отправления """
+
+    to_location: CDEKLocation = None
+    """ Адрес получения """
+
+    services: List[CDEKService] = []
+    """ Дополнительные услуги """
+
+    packages: List[CDEKPackage] = []
+    """ Список информации по местам (упаковкам) """
+
 
 
 class CDEKClient:
@@ -305,6 +487,9 @@ class CDEKClient:
         if take_only is not None:
             params['take_only'] = str(take_only)
         return self._execute_authorized('deliverypoints', params=params)
+
+    def register_order(self, request: RegisterOrderRequest):
+        return self._execute_authorized('orders', data=json.dumps(request, cls=CDEKEncoder), method='POST')
 
 
     
