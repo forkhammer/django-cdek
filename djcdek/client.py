@@ -1,320 +1,21 @@
 import logging
 import json
-import enum
+import pprint
 from typing import List, Dict, Optional, Union
 from urllib.request import Request, urlopen
 from urllib.parse import urlencode
 from datetime import datetime
+
+from .exceptions import CDEKException
+from .serialize import CDEKSerializable, CDEKEncoder
+from .types import *
+
 
 API_URL = 'http://api.cdek.ru/v2/'
 API_URL_TEST = 'http://api.edu.cdek.ru/v2/'
 ACCESS_URL = 'oauth/token'
 
 logger = logging.getLogger('cdek')
-
-
-class CDEKException(Exception):
-    def __init__(self, code:str=None, message:str=None, *args, **kwargs):
-        super(CDEKException, self).__init__(*args, **kwargs)
-        self.code = code
-        self.message = message
-
-
-class CDEKSerializable:
-
-    @property
-    def fields(self):
-        return self.__dict__
-
-
-class CDEKEncoder(json.JSONEncoder):
-    def default(self, o):
-        if isinstance(o, CDEKSerializable):
-            return json.dumps(o.fields, cls=CDEKEncoder)
-        elif isinstance(o, datetime):
-            return o.strftime('%Y-%m-%d')
-        return super(CDEKEncoder, self).default(o)
-
-
-class DeliveryPointType(enum.Enum):
-    PVZ = 'PVZ'  
-    """ склады СДЭК """
-
-    POSTOMAT = 'POSTOMAT'
-    """ Постоматы партнёра """
-
-    ALL = 'ALL'
-    """ Все ПВЗ """
-
-
-class OrderRequestType(enum.Enum):
-    """ Тип заказа """
-    SHOP = 1
-    """ 1 - интернет-магазин (только для договора типа "Договор с ИМ") """
-
-    DELIVERY = 2
-    """ 2 - "доставка" (для любого договора) """
-
-
-class Tariff(enum.Enum):
-    """ Тариф доставки """
-
-    STOCK_STOCK = 136
-    """ склад - склад """
-
-    STOCK_HOME = 137
-    """ склад  - дверь """
-
-    HOME_STOCK = 138
-    """ дверь - склад """
-
-    HOME_HOME = 139
-    """ дверь - дверь """
-
-
-class CDEKMoney(CDEKSerializable):
-    value: float = None
-    """ Сумма """
-    vat_sum: float = None
-    """ Сумма НДС """
-    vat_rate: int = None
-    """ Ставка НДС (значение - 0, 10, 18, 20 и т.п. , null - нет НДС) """
-
-    def __init__(self, value: float, vat_sum: float = None, vat_rate: int = None):
-        self.value = value
-        self.vat_sum = vat_sum
-        self.vat_rate = vat_rate
-    
-
-
-class CDEKPhone(CDEKSerializable):
-    number: str = None
-    """ Номер телефона. Должен передаваться в международном формате: код страны (для России +7) и сам номер (10 и более цифр)"""
-    additional: str = None
-    """ Дополнительная информация (доп. номер) """
-
-    def __init__(self, number: str, additional: str = None):
-        self.number = number
-        self.additional = additional
-
-
-class CDEKSender(CDEKSerializable):
-    """ Отправитель """
-
-    company: str = None
-    """ Название компании """
-    name: str = None
-    """ ФИО контактного лица """
-    email: str = None
-    """ Email """
-    phones: List[CDEKPhone] = []
-
-    def __init__(self, company: str = None, name: str = None, email: str = None, phones: List[CDEKPhone] = []):
-        self.company = company
-        self.name = name
-        self.email = email
-        self.phones = phones
-
-
-class CDEKSeller(CDEKSerializable):
-    """ Реквизиты реального продавца """
-    name: str = None
-    """ Наименование истинного продавца """
-    inn: str = None
-    """ ИНН истинного продавца """
-    phone: str = None
-    """ Телефон истинного продавца """
-    ownership_form: int = None
-    """ Код формы собственности  (подробнее см. приложение 3 https://confluence.cdek.ru/pages/viewpage.action?pageId=29923926#)"""
-
-    def __init__(self, name: str = None, inn: str = None, phone: str = None, ownership_form: int = None):
-        self.name = name
-        self.inn = inn
-        self.phone = phone
-        self.ownership_form = ownership_form
-    
-    
-
-class CDEKRecipient(CDEKSerializable):
-    """ Получатель """
-
-    company: str = None
-    """ Название компании """
-    name: str = None
-    """ ФИО контактного лица """
-    passport_series: str = None
-    """ Серия паспорта """
-    passport_number: str = None
-    """ Номер паспорта """
-    passport_date_of_issue: Union[datetime, str] = None
-    """ Дата выдачи паспорта """
-    passport_organization: str = None
-    """ Орган выдачи паспорта """
-    tin: str = None
-    """ ИНН """
-    passport_date_of_birth: Union[datetime, str] = None
-    """ Дата рождения """
-    email: str = None
-    """ Email """
-    phones: List[CDEKPhone] = []
-
-    def __init__(self, *args, **kwargs):
-        for key, value in kwargs.items():
-            if hasattr(self, key):
-                setattr(self, key, value)
-
-
-class CDEKLocation(CDEKSerializable):
-    """ Местоположение """
-    code: int = None
-    """ Код локации СДЭК """
-    fias_guid: str = None
-    """ Уникальный идентификатор ФИАС """
-    postal_code: str = None
-    """ Почтовый индекс """
-    longitude: float = None
-    """ Долгота """
-    latitude: float = None
-    """ Широта """
-    country_code: str = None
-    """ Код страны в формате  ISO_3166-1_alpha-2 """
-    region: str = None
-    """ Название региона """
-    region_code: int = None
-    """ Код региона СДЭК """
-    sub_region: str = None
-    """ Название района региона """
-    city: str = None
-    """ Название города """
-    kladr_code: str = None
-    """ Код КЛАДР """
-    address: str = None
-    """ Строка адреса """
-
-
-class CDEKService(CDEKSerializable):
-    """ Дополнительная услуга """
-    code: int = None
-    """ Тип дополнительной услуги (подробнее см. приложение 4) """
-    parameter: float = None
-    """
-    Параметр дополнительной услуги:
-
-     - количество упаковок для услуги "Упаковка 1" (для всех типов заказа)
-     - объявленная стоимость заказа для услуги "Страхование" (только для заказов с типом "доставка")
-    """
-
-class CDEKItem(CDEKSerializable):
-    """ Позиции товаров в упаковке """
-    name: str = None
-    """ Наименование товара (может также содержать описание товара: размер, цвет) """
-    ware_key: str = None
-    """ Идентификатор/артикул товара """
-    marking: str = None
-    """ Маркировка товара. Если для товара/вложения указана маркировка, Amount не может быть больше 1. """
-    payment: CDEKMoney = None
-    """ Оплата за товар при получении (за единицу товара в валюте страны получателя, значение >=0) — наложенный платеж, в случае предоплаты значение = 0 """
-    cost: float = None
-    """ Объявленная стоимость товара (за единицу товара в валюте взаиморасчетов, значение >=0). С данного значения рассчитывается страховка """
-    weight: int = None
-    """ Вес (за единицу товара, в граммах) """
-    weight_gross: int = None
-    """ Вес брутто """
-    amount: int = None
-    """ Количество единиц товара (в штуках) """
-    name_i18n: str = None
-    """ Наименование на иностранном языке """
-    brand: str = None
-    """ Бренд на иностранном языке """
-    country_code: str = None
-    """ Код страны производителя товара в формате  ISO_3166-1_alpha-2 """
-    material: int  = None
-    """ Код материала (подробнее см. приложение 5) """
-    wifi_gsm: bool = None
-    """ Содержит wifi/gsm """
-    url: str = None
-    """ Ссылка на сайт интернет-магазина с описанием товара """
-
-    def __init__(self, *args, **kwargs):
-        for key, value in kwargs.items():
-            if hasattr(self, key):
-                setattr(self, key, value)
-
-
-class CDEKPackage(CDEKSerializable):
-    """ Упаковка """
-    number: str = None
-    """ Номер упаковки (можно использовать порядковый номер упаковки заказа или номер заказа), уникален в пределах заказа. Идентификатор заказа в ИС Клиента """
-    weight: int = None
-    """ Общий вес (в граммах) """
-    length: int = None
-    """ Габариты упаковки. Длина (в сантиметрах) """
-    width: int = None
-    """ Габариты упаковки. Ширина (в сантиметрах) """
-    height: int = None
-    """ Габариты упаковки. Высота (в сантиметрах) """
-    comment: str = None
-    """ Комментарий к упаковке """
-    items: List[CDEKItem] = []
-
-    def __init__(self, *args, **kwargs):
-        for key, value in kwargs.items():
-            if hasattr(self, key):
-                setattr(self, key, value)
-
-
-class RegisterOrderRequest(CDEKSerializable):
-    type: int = OrderRequestType.SHOP.value
-    """ Тип заказа """
-
-    number: str = None
-    """ Номер заказа в ИС Клиента (если не передан, будет присвоен номер заказа в ИС СДЭК - uuid) """
-
-    tariff_code: int = Tariff.STOCK_STOCK.value
-    """ Код тарифа (подробнее см. https://confluence.cdek.ru/pages/viewpage.action?pageId=29923926) """
-
-    comment: str = None
-    """ Комментарий к заказу """
-
-    shipment_point: str = None
-    """ Код ПВЗ СДЭК, на который будет производится забор отправления, либо самостоятельный привоз клиентом """
-
-    delivery_point: str = None
-    """ Код ПВЗ СДЭК, на который будет доставлена посылка """
-
-    date_invoice: Union[datetime, str] = None
-    """ Дата инвойса. Только для заказов "интернет-магазин" """
-
-    shipper_name: str = None
-    """ Грузоотправитель. Только для заказов "интернет-магазин" """
-
-    shipper_address: str = None
-    """ Адрес грузоотправителя. Только для заказов "интернет-магазин" """
-
-    delivery_recipient_cost: CDEKMoney = None
-    """ Доп. сбор за доставку, которую ИМ берет с получателя. Только для заказов "интернет-магазин" """
-
-    sender: CDEKSender = None
-    """ Отправитель """
-
-    seller: CDEKSeller = None
-    """ Реквизиты реального продавца """
-
-    recipient: CDEKRecipient = None
-    """ Получатель """
-
-    from_location: CDEKLocation = None
-    """ Адрес отправления """
-
-    to_location: CDEKLocation = None
-    """ Адрес получения """
-
-    services: List[CDEKService] = []
-    """ Дополнительные услуги """
-
-    packages: List[CDEKPackage] = []
-    """ Список информации по местам (упаковкам) """
-
 
 
 class CDEKClient:
@@ -335,24 +36,37 @@ class CDEKClient:
 
     def _handle_errors(self, response):
         if isinstance(response, dict):
-            if 'code' in response:
-                raise CDEKException(code=response.get('code'), message=response.get('message'))
+            if response.get('errors', []):
+                error = response['errors'][0]
+                raise CDEKException(code=error.get('code'), message=error.get('message'))
 
-    def _execute_request(self, url: str, params: dict = None, data: dict = None, method: str='GET') -> dict:
+            for r in response.get('requests', []):
+                if r.get('state') == 'INVALID':
+                    if r.get('errors', []):
+                        error = r['errors'][0]
+                        raise CDEKException(code=error.get('code'), message=error.get('message'))
+                    raise CDEKException(code='unknown', message='Unknown error')
+
+    def _execute_request(self, url: str, params: dict = None, data: dict = None, method: str='GET', content_type: str='application/json') -> dict:
         request_url = self._get_api_url() + url
         if params:
             request_url += '?' + urlencode(params, True)
         if method == 'GET':
             request = Request(request_url)
-        elif method == 'POST':
-            request = Request(request_url, data=json.dumps(data).encode() if data else None, method='POST')
+        elif method in ['POST', 'DELETE']:
+            json_dump = data.encode() if data else None
+            request = Request(request_url, data=json_dump, method=method, headers={
+                'content-type': content_type,
+                'content-length': len(json_dump) if json_dump else 0,
+            })
         else:
             raise NotImplementedError('Unknown method %s' % method)
 
         if self.access_token:
             request.add_header('Authorization', 'Bearer ' + self.access_token)
-        print('EXECUTE: %s' % request.full_url)
-        print('DATA: %s' % json.dumps(data))
+        print('EXECUTE: %s %s' % (method, request.full_url))
+        # print('HEADERS: ', request.header_items())
+        # print('DATA: %s' % data)
         response = urlopen(request).read()
         # print('RESPONSE: %s' % response)
         data = json.loads(response)
@@ -373,15 +87,15 @@ class CDEKClient:
         }, method='POST')
         self.access_token = response.get('access_token')
         self.expires_token = int(response.get('expires_in'))
-        self.timestamp_token = datetime.now().timestamp
+        self.timestamp_token = datetime.now().timestamp()
 
         if not self.access_token:
             raise CDEKException('Not authorized')
 
-    def _execute_authorized(self, url: str, params: dict = None, data: dict = None, method: str='GET') -> dict:
+    def _execute_authorized(self, url: str, params: dict = None, data: dict = None, method: str='GET', content_type: str='application/json') -> dict:
         if not self._is_authorized():
             self.auth()
-        return self._execute_request(url, params, data, method)
+        return self._execute_request(url, params, data, method, content_type)
 
     def get_regions(self, country_codes: List[str]=[], region_code: str = None, kladr_region_code: str = None,
                     fias_region_guid: str = None, size: int = None, page: int = None, lang: str = None) -> Dict[str, str]:
@@ -488,8 +202,86 @@ class CDEKClient:
             params['take_only'] = str(take_only)
         return self._execute_authorized('deliverypoints', params=params)
 
-    def register_order(self, request: RegisterOrderRequest):
-        return self._execute_authorized('orders', data=json.dumps(request, cls=CDEKEncoder), method='POST')
+    def register_order(self, request: RegisterOrderRequest) -> str:
+        """ 
+        Регистрирует заказ в системе CDEK 
 
+        request -- запрос на регистрацию заказа
+        return идентификатор заказа
+        """
+        response = self._execute_authorized('orders', data=json.dumps(request, cls=CDEKEncoder), method='POST')
+        try:
+            return response['entity']['uuid']
+        except KeyError:
+            raise CDEKException(code='nouuid', message='No entity UUID')
+
+    def order_info(self, uuid: str) -> dict:
+        """ 
+        Возвращает информацию о заказе
+
+        uuid - идентификатор заказа
+        """
+        return self._execute_authorized('orders/' + uuid)
+
+    def delete_order(self, uuid: str) -> dict:
+        """ 
+        Удаляет заказ в системе CDEK
+
+        uuid - идентификатор заказа
+        """
+        return self._execute_authorized('orders/' + uuid, method='DELETE')
+
+    def print_request(self, uuids: List[str], copy_count: int = 2) -> str:
+        """ 
+        Отправляет запрос на формирование квитанций к заказу 
+        
+        uuids -- список идентификаторов заказов
+        copy_count -- количество копий на листе
+        return индентификатор квитанций
+        """
+        query = {
+            'orders': [{'order_uuid': uuid} for uuid in uuids],
+            'copy_count': copy_count,
+        }
+        response = self._execute_authorized('print/orders', data=json.dumps(query, cls=CDEKEncoder), method='POST')
+        pprint.pprint(response)
+        try:
+            return response['entity']['uuid']
+        except KeyError:
+            raise CDEKException(code='nouuid', message='no entity uuid')
+
+    def print_info(self, uuid: str) -> dict:
+        """
+        Возвращает информацию о квитанции
+
+        uuid -- идентификатор квитанции
+        return информация о кваитанции 
+        """
+        return self._execute_authorized('print/orders/' + uuid)
+
+    def get_print_status(self, print_info: dict) -> CDEKPrintStatus:
+        """
+        Возвращает текущий статус квитанции
+
+        print_info -- словарь с информациоей о квитанции полученный методом print_info(uuid)
+        """
+        try:
+            statuses = print_info['entity']['statuses']
+            if len(statuses) > 0:
+                return CDEKPrintStatus[statuses[-1]['code']]
+        except KeyError:
+            raise CDEKException(code='noentity', message='no entity status')
+
+
+    def get_print_url(self, print_info: dict) -> Optional[str]:
+        """
+        Возвращает url для скачивания квитанции
+
+        print_info -- словарь с информациоей о квитанции полученный методом print_info(uuid)
+        """
+        try:
+            url = print_info['entity']['url']
+        except KeyError:
+            return None
 
     

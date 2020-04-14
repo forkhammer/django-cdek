@@ -33,7 +33,7 @@ logConfig = {
 logging.config.dictConfig(logConfig)
 
 from djcdek.client import CDEKClient, DeliveryPointType, RegisterOrderRequest, CDEKSender, \
-    CDEKRecipient, CDEKPhone, CDEKPackage, CDEKItem, CDEKEncoder
+    CDEKRecipient, CDEKPhone, CDEKPackage, CDEKItem, CDEKEncoder, CDEKMoney, CDEKTariff, CDEKService
 
 client = CDEKClient('epT5FMOa7IwjjlwTc1gUjO1GZDH1M1rE', 'cYxOu9iAMZYQ1suEqfEvsHld4YQzjY0X', test=True)
 
@@ -46,24 +46,27 @@ client = CDEKClient('epT5FMOa7IwjjlwTc1gUjO1GZDH1M1rE', 'cYxOu9iAMZYQ1suEqfEvsHl
 # deliverypoints = client.get_deliverypoints(country_code='RU', dptype=DeliveryPointType.ALL)
 # pprint.pprint(deliverypoints)
 
-request = RegisterOrderRequest()
-request.number = 1
-request.shipment_point = 'PPK2'
-request.delivery_point = 'NSK33'
-request.date_invoice = datetime.datetime.now()
-request.shipper_name = 'ООО Рога и копыта'
-request.shipper_address = 'Петропавловск-Камчатский, ул. Бохняка, 18'
-request.sender = CDEKSender(
-    company = 'ООО Рога и копыта',
-    name = 'Иван Петров',
-    email = 'test@test.ru',
-    phones = [CDEKPhone(number='+79991010333')],
-)
-request.recipient = CDEKRecipient(
-    company = 'ИП Сидоров',
-    name = 'СИДОРОВ А.В.',
-    email = 'sidorov@test.ru',
-    phones = [CDEKPhone(number='+799955550000')],
+request = RegisterOrderRequest(
+    # number = 1,
+    tariff_code = CDEKTariff.STOCK_STOCK.value,
+    shipment_point = 'PPK2',
+    delivery_point = 'NSK33',
+    # # date_invoice = datetime.datetime.now(),
+    # shipper_name = 'ООО Рога и копыта',
+    # shipper_address = 'Петропавловск-Камчатский, ул. Бохняка, 18',
+    sender = CDEKSender(
+        # company = 'ООО Рога и копыта',
+        name = 'Иван Петров',
+        # email = 'test@test.ru',
+        phones = [CDEKPhone(number='79991010333')],
+    ),
+    recipient = CDEKRecipient(
+        # company = 'ИП Сидоров',
+        name = 'СИДОРОВ А.В.',
+        email = 'sidorov@test.ru',
+        phones = [CDEKPhone(number='799955550000')],
+    ),
+    services = [CDEKService(code='DELIV_WEEKEND')],
     packages = [CDEKPackage(
         number='1',
         weight=1000,
@@ -77,12 +80,25 @@ request.recipient = CDEKRecipient(
                 cost=1000,
                 weight=1000,
                 amount=1,
+                payment=CDEKMoney(value=100),
                 url='https://myshop.ru/product/1',
             )
         ]
     )]
 )
 
-response = client.register_order(request)
-pprint.pprint(response)
+order_uuid = client.register_order(request)
+pprint.pprint(order_uuid)
+
+# pprint.pprint(client.order_info(order_uuid))
+
+# pprint.pprint(client.delete_order(order_uuid))
+
+print_uuid = client.print_request([order_uuid])
+print(print_uuid)
+
+print_info = client.print_info(print_uuid)
+pprint.pprint(print_info)
+print(client.get_print_status(print_info))
+print(client.get_print_url(print_info))
 
