@@ -4,6 +4,25 @@ from typing import List, Dict, Optional, Union
 
 from .serialize import CDEKSerializable
 
+__all_ = [
+    'DeliveryPointType',
+    'OrderRequestType',
+    'OrderRequestType',
+    'CDEKTariff',
+    'CDEKMoney',
+    'CDEKPhone',
+    'CDEKSender',
+    'CDEKSeller',
+    'CDEKSeller',
+    'CDEKLocation',
+    'CDEKService',
+    'CDEKItem',
+    'CDEKPackage',
+    'RegisterOrderRequest',
+    'CDEKPrintStatus',
+    'CDEKBarcodeFormat',
+]
+
 
 class DeliveryPointType(enum.Enum):
     PVZ = 'PVZ'  
@@ -53,7 +72,6 @@ class CDEKMoney(CDEKSerializable):
         self.value = value
         self.vat_sum = vat_sum
         self.vat_rate = vat_rate
-    
 
 
 class CDEKPhone(CDEKSerializable):
@@ -182,6 +200,7 @@ class CDEKService(CDEKSerializable):
         for key, value in kwargs.items():
             if hasattr(self, key):
                 setattr(self, key, value)
+
 
 class CDEKItem(CDEKSerializable):
     """ Позиции товаров в упаковке """
@@ -313,3 +332,10 @@ class CDEKPrintStatus(enum.Enum):
     """ Истекло время жизни ссылки на скачивание файла с квитанцией """
     INVALID = 'INVALID'
     """ Некорректный запрос на формирование квитанции """
+
+
+class CDEKBarcodeFormat(enum.Enum):
+    """ Форматы печати штрихкодов """
+    A4 = 'A4'
+    A5 = 'A5'
+    A6 = 'A6'

@@ -94,11 +94,20 @@ pprint.pprint(order_uuid)
 
 # pprint.pprint(client.delete_order(order_uuid))
 
-print_uuid = client.print_request([order_uuid])
-print(print_uuid)
+# print_uuid = client.print_request([order_uuid])
+# print(print_uuid)
 
-print_info = client.print_info(print_uuid)
-pprint.pprint(print_info)
-print(client.get_print_status(print_info))
-print(client.get_print_url(print_info))
+# print_info = client.print_info(print_uuid)
+# pprint.pprint(print_info)
+# print(client.get_print_status(print_info))
+# print(client.get_print_url(print_info))
+
+
+barcode_uuid = client.barcode_request([order_uuid])
+print(barcode_uuid)
+
+barcode_info = client.barcode_info(barcode_uuid)
+pprint.pprint(barcode_info)
+print(client.get_barcode_status(barcode_info))
+print(client.get_barcode_url(barcode_info))
 

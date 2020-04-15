@@ -284,4 +284,59 @@ class CDEKClient:
         except KeyError:
             return None
 
+    def barcode_request(self, uuids: List[str], copy_count: int = 2, format: CDEKBarcodeFormat = CDEKBarcodeFormat.A4) -> str:
+        """ 
+        Отправляет запрос на формирование штрихкодов к заказу 
+        
+        uuids -- список идентификаторов заказов
+        copy_count -- количество копий на листе
+        return индентификатор квитанций
+        """
+        query = {
+            'orders': [{'order_uuid': uuid} for uuid in uuids],
+            'copy_count': copy_count,
+            'format': format.value,
+        }
+        response = self._execute_authorized('print/barcodes', data=json.dumps(query, cls=CDEKEncoder), method='POST')
+        pprint.pprint(response)
+        try:
+            return response['entity']['uuid']
+        except KeyError:
+            raise CDEKException(code='nouuid', message='no entity uuid')
+
+    def barcode_info(self, uuid: str) -> dict:
+        """
+        Возвращает информацию о штрихкоде
+
+        uuid -- идентификатор шртрихкода
+        return информация о трихкоде 
+        """
+        return self._execute_authorized('print/barcodes/' + uuid)
+
+    def get_barcode_status(self, barcode_info: dict) -> CDEKPrintStatus:
+        """
+        Возвращает текущий статус штрихкода
+
+        barcode_info -- словарь с информациоей о штрихкоде полученный методом barcode_info(uuid)
+        """
+        try:
+            statuses = barcode_info['entity']['statuses']
+            if len(statuses) > 0:
+                return CDEKPrintStatus[statuses[-1]['code']]
+        except KeyError:
+            raise CDEKException(code='noentity', message='no entity status')
+
+
+    def get_barcode_url(self, barcode_info: dict) -> Optional[str]:
+        """
+        Возвращает url для скачивания штрихкода
+
+        barcode_info -- словарь с информациоей о штрихкоде полученный методом barcode_info(uuid)
+        return ссылка на скачивание штрихкода
+        """
+        try:
+            url = barcode_info['entity']['url']
+        except KeyError:
+            return None
+
     
