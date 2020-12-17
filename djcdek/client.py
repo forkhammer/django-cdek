@@ -32,7 +32,7 @@ class CDEKClient:
         if self.test:
             return API_URL_TEST
         else:
-            return API_URL_TEST
+            return API_URL
 
     def _handle_errors(self, response):
         if isinstance(response, dict):
@@ -202,6 +202,32 @@ class CDEKClient:
             params['take_only'] = str(take_only)
         return self._execute_authorized('deliverypoints', params=params)
 
+    def get_tarifflist(self, from_location: CDEKLocation, to_location: CDEKLocation, packages: CDEKPackage,
+                       type: int = 1, date: Union[datetime, str] = None) -> str:
+        """
+        Калькулятор. Расчет по доступным тарифам
+        """
+        data = dict()
+        data['from_location'] = from_location
+        data['to_location'] = to_location
+        data['packages'] = packages        
+        return self._execute_authorized(
+            'calculator/tarifflist', data=json.dumps(data), method='POST')
+
+    def get_tariff(self, tarif_code:CDEKTariff ,from_location: CDEKLocation, to_location: CDEKLocation, packages: CDEKPackage,
+                   type: int = 1, services: List[CDEKService] = None, date: Union[datetime, str] = None) -> str:
+        """
+        Калькулятор. Расчет по коду тарифа
+        """
+        data = dict()
+        data['tariff_code'] = tarif_code        
+        data['from_location'] = from_location
+        data['to_location'] = to_location
+        data['packages'] = packages
+        data['services'] = services
+        return self._execute_authorized(
+            'calculator/tariff', data=json.dumps(data, cls=CDEKEncoder), method='POST')
+        
     def register_order(self, request: RegisterOrderRequest) -> str:
         """ 
         Регистрирует заказ в системе CDEK 
