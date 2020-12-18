@@ -1,4 +1,5 @@
 Pipfile
+Pipfile.lock
 .vscode
 debug.log
 .mypy_cache
