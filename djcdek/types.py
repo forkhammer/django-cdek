@@ -21,6 +21,10 @@ __all_ = [
     'RegisterOrderRequest',
     'CDEKPrintStatus',
     'CDEKBarcodeFormat',
+    'CDEKDeliveryGood',
+    'CDEKDeliveryService',
+    'CDEKDeliveryRequest',
+    'CDEKDeliveryResponse',
 ]
 
 
@@ -33,6 +37,13 @@ class DeliveryPointType(enum.Enum):
 
     ALL = 'ALL'
     """ Все ПВЗ """
+
+    @classmethod
+    def to_dict(cls):
+        return {
+            cls.PVZ: 'Склад CDEK',
+            cls.POSTOMAT: 'Постомат'
+        }
 
 
 class OrderRequestType(enum.Enum):
@@ -58,6 +69,15 @@ class CDEKTariff(enum.Enum):
 
     HOME_HOME = 139
     """ дверь - дверь """
+
+    @classmethod
+    def to_dict(cls):
+        return {
+            cls.STOCK_STOCK.value: 'Склад-склад',
+            cls.STOCK_HOME.value: 'Склад-дверь',
+            cls.HOME_STOCK.value: 'Дверь-склад',
+            cls.HOME_HOME.value: 'Дверь-дверь',
+        }
 
 
 class CDEKMoney(CDEKSerializable):
@@ -339,3 +359,115 @@ class CDEKBarcodeFormat(enum.Enum):
     A4 = 'A4'
     A5 = 'A5'
     A6 = 'A6'
+
+
+class CDEKDeliveryGood(CDEKSerializable):
+    """
+    Товар доставки
+    """
+    weight: float = 0
+    """ Вес, кг """
+
+    width: float = 0
+    """ Ширина, см """
+
+    length: float = 0
+    """ Длина, см '"""
+
+    height: float = 0
+    """ Высота, см """
+
+    def __init__(self, weight: float, length: float, height: float, width: float):
+        self.weight = weight
+        self.length = length
+        self.height = height
+        self.width = width
+
+
+class CDEKDeliveryService(CDEKSerializable):
+    """
+    Дополнительные услуги доставки
+    """
+    id: float = None
+    """ Код дополнительной услуги """
+
+    param: int = None
+    """ Параметр дополнительной услуги """
+
+    def __init__(self, id: int, param: int):
+        self.id = id
+        self.param = param
+
+
+class CDEKDeliveryRequest(CDEKSerializable):
+    version: str = None
+    """ Номер версии API """
+
+    authLogin: str = None
+    """ Логин """
+
+    secure: str = None
+    """ Пароль """
+
+    dateExecute: datetime = None
+    """ Дата планируемой доставки """
+
+    senderCityId:int = None
+    """ Код города отправителя """
+
+    receiverCityId:int = None
+    """ Код города получателя """
+
+    tariffId: int = None
+    """ Код тарифа """
+
+    goods: List[CDEKDeliveryGood] = []
+    """ Список товаров для доставки """
+
+    services: List[CDEKDeliveryService] = []
+    """ Список дополнительных услуг доставки """
+
+    def __init__(self, *args, **kwargs):
+        self.version = "1.0"
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+        if not self.dateExecute:
+            self.dateExecute = datetime.now()
+
+
+class CDEKDeliveryResponse(CDEKSerializable):
+    price: float = None
+    """ Стоимость доставки """
+
+    deliveryPeriodMin: int = None
+    """ Сумма за доставку в рублях """
+
+    deliveryPeriodMax: int = None
+    """ Минимальное время доставки в днях """
+
+    deliveryDateMin: str = None
+    """ Минимальная дата доставки, формате 'ГГГГ-ММ-ДД', например “2018-07-29” """
+
+    deliveryDateMax: str = None
+    """ Максимальная дата доставки, формате 'ГГГГ-ММ-ДД', например “2018-07-30” """
+    
+    tariffId: int = None
+    """ Код тарифа, по которому рассчитана сумма доставки """
+
+    priceByCurrency: float = None
+    """ Цена в валюте взаиморасчетов """
+
+    cashOnDelivery: float = None
+    """ Ограничение оплаты наличными, появляется только если оно есть """
+
+    currency: str = None
+    """ Валюта интернет-магазина """
+
+    percentVAT: int = None
+    """ Размер ставки НДС для данного клиента """
+
+    def __init__(self, *args, **kwargs):
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)

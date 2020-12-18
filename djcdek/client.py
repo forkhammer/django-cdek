@@ -1,6 +1,5 @@
 import logging
 import json
-import pprint
 from typing import List, Dict, Optional, Union
 from urllib.request import Request, urlopen
 from urllib.parse import urlencode
@@ -12,6 +11,7 @@ from .types import *
 
 
 API_URL = 'http://api.cdek.ru/v2/'
+APIV1_URL = 'http://api.cdek.ru/'
 API_URL_TEST = 'http://api.edu.cdek.ru/v2/'
 ACCESS_URL = 'oauth/token'
 
@@ -19,7 +19,7 @@ logger = logging.getLogger('cdek')
 
 
 class CDEKClient:
-    def __init__(self, client_id: str, client_secret: str, test: bool = False):
+    def __init__(self, client_id: str, client_secret: str, test: bool = False, account: str = None, secure_password: str = None):
         self.client_id = client_id
         self.client_secret = client_secret
         self.test = test
@@ -27,18 +27,31 @@ class CDEKClient:
         self.expires_token = 0
         self.timestamp_token = None
 
+        self.account = account
+        self.secure_password = secure_password
 
-    def _get_api_url(self) -> str:
-        if self.test:
-            return API_URL_TEST
+
+    def _get_api_url(self, version: str = '2') -> str:
+        if version == '2':
+            if self.test:
+                return API_URL_TEST
+            else:
+                return API_URL
+        elif version == '1':
+            return APIV1_URL
         else:
-            return API_URL
+            raise CDEKException('Invalid API version')
 
     def _handle_errors(self, response):
         if isinstance(response, dict):
             if response.get('errors', []):
                 error = response['errors'][0]
                 raise CDEKException(code=error.get('code'), message=error.get('message'))
+
+            # обработчик ошибок 1 версии API
+            if response.get('error', []):
+                error = response['error'][0]
+                raise CDEKException(code=error.get('code'), message=error.get('text'))
 
             for r in response.get('requests', []):
                 if r.get('state') == 'INVALID':
@@ -47,8 +60,8 @@ class CDEKClient:
                         raise CDEKException(code=error.get('code'), message=error.get('message'))
                     raise CDEKException(code='unknown', message='Unknown error')
 
-    def _execute_request(self, url: str, params: dict = None, data: dict = None, method: str='GET', content_type: str='application/json') -> dict:
-        request_url = self._get_api_url() + url
+    def _execute_request(self, url: str, params: dict = None, data: dict = None, method: str='GET', content_type: str='application/json', version: str = '2') -> dict:
+        request_url = self._get_api_url(version=version) + url
         if params:
             request_url += '?' + urlencode(params, True)
         if method == 'GET':
@@ -64,10 +77,10 @@ class CDEKClient:
 
         if self.access_token:
             request.add_header('Authorization', 'Bearer ' + self.access_token)
-        print('EXECUTE: %s %s' % (method, request.full_url))
-        # print('HEADERS: ', request.header_items())
-        # print('DATA: %s' % data)
-        response = urlopen(request).read()
+        logger.debug('EXECUTE: %s %s' % (method, request.full_url))
+        logger.debug('HEADERS: %s' % request.header_items())
+        logger.debug('DATA: %s' % data)
+        response = urlopen(request, timeout=10).read()
         # print('RESPONSE: %s' % response)
         data = json.loads(response)
         self._handle_errors(data)
@@ -270,7 +283,6 @@ class CDEKClient:
             'copy_count': copy_count,
         }
         response = self._execute_authorized('print/orders', data=json.dumps(query, cls=CDEKEncoder), method='POST')
-        pprint.pprint(response)
         try:
             return response['entity']['uuid']
         except KeyError:
@@ -324,7 +336,6 @@ class CDEKClient:
             'format': format.value,
         }
         response = self._execute_authorized('print/barcodes', data=json.dumps(query, cls=CDEKEncoder), method='POST')
-        pprint.pprint(response)
         try:
             return response['entity']['uuid']
         except KeyError:
@@ -335,7 +346,7 @@ class CDEKClient:
         Возвращает информацию о штрихкоде
 
         uuid -- идентификатор шртрихкода
-        return информация о трихкоде 
+        return информация о штрихкоде 
         """
         return self._execute_authorized('print/barcodes/' + uuid)
 
@@ -364,5 +375,24 @@ class CDEKClient:
             url = barcode_info['entity']['url']
         except KeyError:
             return None
+
+    def get_delivery_price(self, request: CDEKDeliveryRequest) -> float:
+        """
+        DEPRECATED: Используй get_tariff
+
+        Возвращает стоимость доставки по переданным параметрам
+
+        request -- объект запроса доставки
+
+        Работает по API v1
+        """
+        if not request.authLogin and self.account:
+            request.authLogin = self.account
+            request.secure = self.secure_password
+        response = self._execute_request('calculator/calculate_price_by_json.php', method='POST', data=json.dumps(request, cls=CDEKEncoder), version='1')
+        if 'result' in response:
+            return CDEKDeliveryResponse(**response['result'])
+        else:
+            raise CDEKException(code='invalid response', message='Invalid delivery response')
 
     

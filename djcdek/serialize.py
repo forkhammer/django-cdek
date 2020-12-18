@@ -1,11 +1,16 @@
 import json
-import datetime
+from datetime import datetime
 
 
 class CDEKSerializable:
     @property
     def fields(self):
         return self.__dict__
+
+    def set_fields(self, data: dict):
+        for key, value in data.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
 
 
 class CDEKEncoder(json.JSONEncoder):
